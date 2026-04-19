@@ -1,0 +1,44 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "User profile and subscription data",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "email": { "type": "string" },
+        "displayName": { "type": "string" },
+        "photoURL": { "type": "string" },
+        "plan": { "type": "string", "enum": ["free", "pro", "premium"] },
+        "niche": { "type": "string" },
+        "audience": { "type": "string" }
+      },
+      "required": ["uid", "email"]
+    },
+    "PostIdea": {
+      "title": "PostIdea",
+      "description": "A generated post idea",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "title": { "type": "string" },
+        "description": { "type": "string" },
+        "caption": { "type": "string" },
+        "hashtags": { "type": "array", "items": { "type": "string" } },
+        "platform": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "title", "caption", "createdAt"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "User",
+      "description": "User profiles"
+    },
+    "/users/{userId}/ideas/{ideaId}": {
+      "schema": "PostIdea",
+      "description": "Generated ideas for a specific user"
+    }
+  }
+}

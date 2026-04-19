@@ -1,0 +1,101 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // ===============================================================
+    // Assumed Data Model
+    // ===============================================================
+    //
+    // Collection: users
+    // Document ID: {uid}
+    // Fields:
+    //   - uid: string (required) - The user's unique ID
+    //   - email: string (required) - The user's email address
+    //   - displayName: string (optional) - The user's name
+    //   - photoURL: string (optional) - The user's profile picture URL
+    //   - plan: string (required, enum: ['free', 'pro', 'premium']) - Subscription plan
+    //   - createdAt: timestamp (required) - When the profile was created
+    //   - ideasGeneratedToday: number (optional) - Daily usage counter
+    //   - lastGenerationDate: string (optional) - Last usage date (YYYY-MM-DD)
+    //
+    // Collection: users/{userId}/ideas
+    // Document ID: auto-generated
+    // Fields:
+    //   - userId: string (required) - Owner's UID
+    //   - title: string (required) - Idea title
+    //   - description: string (required) - Idea description
+    //   - caption: string (required) - Generated caption
+    //   - hashtags: list (required) - List of hashtags
+    //   - platform: string (required) - Target platform
+    //   - createdAt: timestamp (required) - Creation time
+    //
+    // ===============================================================
+
+    // Helper Functions
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    function isAdmin() {
+      return isAuthenticated() &&
+        (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin' ||
+          (request.auth.token.email == "klflane0304@gmail.com" && request.auth.token.email_verified == true));
+    }
+
+    function isValidEmail(email) {
+      return email is string && email.matches("^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$");
+    }
+
+    // User Profile Validation
+    function isValidUser(data) {
+      let allowedFields = ['uid', 'email', 'displayName', 'photoURL', 'plan', 'createdAt', 'ideasGeneratedToday', 'lastGenerationDate', 'role'];
+      let requiredFields = ['uid', 'email', 'plan', 'createdAt'];
+      
+      return data.keys().hasAll(requiredFields) &&
+             data.keys().hasOnly(allowedFields) &&
+             data.uid == request.auth.uid &&
+             data.email is string && isValidEmail(data.email) &&
+             data.plan in ['free', 'pro', 'premium'] &&
+             data.createdAt is timestamp &&
+             (!('displayName' in data) || (data.displayName is string && data.displayName.size() < 100)) &&
+             (!('photoURL' in data) || (data.photoURL is string && data.photoURL.size() < 500)) &&
+             (!('ideasGeneratedToday' in data) || data.ideasGeneratedToday is number) &&
+             (!('lastGenerationDate' in data) || (data.lastGenerationDate is string && data.lastGenerationDate.size() < 20));
+    }
+
+    // Post Idea Validation
+    function isValidIdea(data) {
+      let allowedFields = ['userId', 'title', 'description', 'caption', 'hashtags', 'platform', 'createdAt'];
+      let requiredFields = ['userId', 'title', 'description', 'caption', 'hashtags', 'platform', 'createdAt'];
+      
+      return data.keys().hasAll(requiredFields) &&
+             data.keys().hasOnly(allowedFields) &&
+             data.userId == request.auth.uid &&
+             data.title is string && data.title.size() > 0 && data.title.size() < 200 &&
+             data.description is string && data.description.size() < 2000 &&
+             data.caption is string && data.caption.size() < 5000 &&
+             data.hashtags is list && data.hashtags.size() <= 30 &&
+             data.platform is string && data.platform.size() < 50 &&
+             data.createdAt is timestamp;
+    }
+
+    match /users/{userId} {
+      allow read: if isOwner(userId) || isAdmin();
+      allow create: if isOwner(userId) && isValidUser(request.resource.data);
+      allow update: if isOwner(userId) && isValidUser(request.resource.data) && 
+                    (request.resource.data.plan == resource.data.plan || isAdmin()) &&
+                    (!('role' in request.resource.data) || request.resource.data.role == resource.data.role || isAdmin());
+
+      match /ideas/{ideaId} {
+        allow read: if isOwner(userId);
+        allow create: if isOwner(userId) && isValidIdea(request.resource.data);
+        allow update: if isOwner(userId) && isValidIdea(request.resource.data);
+        allow delete: if isOwner(userId);
+      }
+    }
+  }
+}
